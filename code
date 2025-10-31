@@ -1,0 +1,192 @@
+import tkinter as tk
+from tkinter import ttk
+import re
+import hashlib
+
+HASH_ALGORITHM = 'sha256'
+
+class PasswordEvaluatorApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("Secure Password Strength Evaluator")
+        master.resizable(False, False)
+
+        # Define modern colors
+        self.GREEN = "#10b981"  # emerald-500
+        self.RED = "#ef4444"    # red-500
+        self.YELLOW = "#f59e0b" # amber-500
+        self.GRAY = "#6b7280"   # gray-500
+        BG_COLOR = "#f3f4f6"    # light gray background
+        CARD_COLOR = "#ffffff"  # white card background
+
+        # --- Ttk Styling (Website look) ---
+        style = ttk.Style()
+        style.theme_use('clam') # Use a modern, flat theme
+        
+        self.master.configure(bg=BG_COLOR)
+        
+        # Main Frame (The Card)
+        style.configure('TFrame', background=CARD_COLOR, padding=10)
+        
+        # Fonts and Colors for Labels
+        style.configure('TLabel', font=('Inter', 10), background=CARD_COLOR, foreground='#374151')
+        style.configure('Header.TLabel', font=('Inter', 18, 'bold'), foreground='#1f2937', background=CARD_COLOR)
+        style.configure('Score.TLabel', font=('Inter', 16, 'bold'), background=CARD_COLOR, foreground=self.GRAY)
+        style.configure('Criteria.TLabel', font=('Inter', 10), background=CARD_COLOR)
+        
+        # Entry styling for INPUT
+        style.configure('TEntry', fieldbackground=CARD_COLOR, borderwidth=1, relief='flat', font=('Inter', 12))
+        style.map('TEntry', fieldbackground=[('focus', '#eef2ff')]) # Light blue on focus
+
+        # Entry styling for READ-ONLY HASH OUTPUT
+        style.configure('ReadOnly.TEntry', 
+                        font=('Consolas', 10), 
+                        foreground='#1f2937', 
+                        fieldbackground='#f7f7f7', 
+                        borderwidth=1, 
+                        relief='sunken', 
+                        padding=5)
+
+        # --- Variables ---
+        self.password = tk.StringVar()
+        self.score_text = tk.StringVar(value="Score: 0/5 (Weak)")
+        self.hashed_output = tk.StringVar(value=f"{HASH_ALGORITHM.upper()} Hash Output")
+
+        # --- Layout ---
+        main_frame = ttk.Frame(master, style='TFrame', padding="25 20")
+        main_frame.pack(padx=30, pady=30, fill='both', expand=False)
+
+        ttk.Label(main_frame, text="Secure Password Strength Audit", style='Header.TLabel').pack(pady=(0, 20))
+
+        ttk.Label(main_frame, text="Enter Password:").pack(anchor='w')
+        
+        self.password_entry = ttk.Entry(main_frame, textvariable=self.password, show="*", width=45)
+        self.password_entry.pack(fill='x', pady=5)
+        self.password_entry.bind('<KeyRelease>', self.update_strength)
+
+        # Score Label (Need to keep a reference to change its color dynamically)
+        self.score_label = ttk.Label(main_frame, textvariable=self.score_text, style='Score.TLabel')
+        self.score_label.pack(anchor='w', pady=(15, 10))
+
+        self.criteria_frame = ttk.Frame(main_frame, style='TFrame')
+        self.criteria_frame.pack(fill='x', pady=10)
+        self.criteria_widgets = {} # Stores (StringVar, LabelWidget)
+        self.setup_criteria_labels()
+
+        # Hash Section
+        ttk.Label(main_frame, text=f"\nSecure Storage Demonstration ({HASH_ALGORITHM.upper()}):", style='TLabel').pack(anchor='w', pady=(15, 0))
+        
+        # Hash Output Interface (Entry + Copy Button)
+        hash_controls_frame = ttk.Frame(main_frame, style='TFrame')
+        hash_controls_frame.pack(fill='x', pady=5)
+        
+        # Entry for Hash Output (Read-only, making it selectable/copyable)
+        self.hash_entry = ttk.Entry(
+            hash_controls_frame, 
+            textvariable=self.hashed_output, 
+            style='ReadOnly.TEntry',
+            width=50
+        )
+        # Setting state to readonly ensures the user cannot type in the hash field
+        self.hash_entry.configure(state='readonly')
+        self.hash_entry.pack(side='left', fill='x', expand=True, padx=(0, 10))
+
+        # Copy Button
+        self.copy_button = ttk.Button(hash_controls_frame, text="Copy", command=self.copy_hash)
+        self.copy_button.pack(side='right')
+
+    def setup_criteria_labels(self):
+        criteria = [
+            "Minimum 8 characters",
+            "At least one uppercase letter (A-Z)",
+            "At least one lowercase letter (a-z)",
+            "At least one digit (0-9)",
+            "At least one special character (!@#...)"
+        ]
+        
+        for i, text in enumerate(criteria):
+            label_text = tk.StringVar(value=f"⚪ {text}")
+            # The foreground is initialized to gray
+            label = ttk.Label(self.criteria_frame, textvariable=label_text, style='Criteria.TLabel', foreground=self.GRAY)
+            label.pack(anchor='w', pady=2)
+            self.criteria_widgets[text] = (label_text, label)
+
+    def check_strength(self, password):
+        score = 0
+        checks = {
+            "Minimum 8 characters": len(password) >= 8,
+            "At least one uppercase letter (A-Z)": bool(re.search(r'[A-Z]', password)),
+            "At least one lowercase letter (a-z)": bool(re.search(r'[a-z]', password)),
+            "At least one digit (0-9)": bool(re.search(r'[0-9]', password)),
+            "At least one special character (!@#...)": bool(re.search(r'[^A-Za-z0-9\s]', password))
+        }
+
+        for text, passed in checks.items():
+            text_var, label_widget = self.criteria_widgets[text]
+            if passed:
+                score += 1
+                text_var.set(f"✅ {text}")
+                label_widget.configure(foreground=self.GREEN)
+            else:
+                text_var.set(f"❌ {text}")
+                label_widget.configure(foreground=self.RED)
+        
+        return score
+
+    def update_strength(self, event=None):
+        password = self.password.get()
+        if not password:
+            self.score_text.set("Score: 0/5 (Weak)")
+            self.score_label.configure(foreground=self.GRAY)
+            self.hashed_output.set(f"{HASH_ALGORITHM.upper()} Hash Output")
+            
+            # Reset criteria labels to neutral state
+            for text_var, label_widget in self.criteria_widgets.values():
+                 # Use a simple split to keep the criteria text and reset the bullet to '⚪'
+                 original_text = text_var.get().split(' ', 1)[1]
+                 text_var.set(f"⚪ {original_text}")
+                 label_widget.configure(foreground=self.GRAY)
+            return
+
+        score = self.check_strength(password)
+        
+        status = "Very Weak"
+        color = self.RED
+        if score == 5:
+            status = "Excellent"
+            color = self.GREEN
+        elif score == 4:
+            status = "Strong"
+            color = self.GREEN
+        elif score >= 2:
+            status = "Medium"
+            color = self.YELLOW
+        
+        self.score_text.set(f"Score: {score}/5 ({status})")
+        self.score_label.configure(foreground=color)
+
+        encoded_pass = password.encode('utf-8')
+        hashed_pass = hashlib.sha256(encoded_pass).hexdigest()
+        self.hashed_output.set(hashed_pass)
+
+    def copy_hash(self):
+        hash_value = self.hashed_output.get()
+        # Only copy if a hash is present and not the initial placeholder
+        if hash_value and hash_value != f"{HASH_ALGORITHM.upper()} Hash Output":
+            try:
+                self.master.clipboard_clear()
+                self.master.clipboard_append(hash_value)
+                
+                # Provide temporary visual feedback on the button
+                original_text = self.copy_button.cget('text')
+                self.copy_button.configure(text="Copied!", state='disabled')
+                # Revert button state after 1 second
+                self.master.after(1000, lambda: self.copy_button.configure(text=original_text, state='normal'))
+            except Exception as e:
+                print(f"Error copying to clipboard: {e}")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = PasswordEvaluatorApp(root)
+    root.mainloop()
